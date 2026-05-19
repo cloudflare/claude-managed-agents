@@ -56,6 +56,14 @@
       "EMAIL_FROM": {
         "description": "Default sender address for cf_email_send. Must belong to a zone you control via Cloudflare Email Routing. Leave blank to require the agent to pass `from` explicitly on every send.",
         "default": ""
+      },
+      "CF_ACCESS_TEAM_DOMAIN": {
+        "description": "Cloudflare Access team domain used to validate Cf-Access-Jwt-Assertion, for example <team>.cloudflareaccess.com.",
+        "default": ""
+      },
+      "CF_ACCESS_AUD": {
+        "description": "Cloudflare Access Application Audience (AUD) tag for the protected dashboard/API application.",
+        "default": ""
       }
     }
   },
@@ -75,6 +83,7 @@
     "agents": "^0.12.4",
     "ai": "^6.0.174",
     "hono": "^4.12.9",
+    "jose": "6.2.3",
     "marked": "^14.1.4",
     "minimatch": "^10.2.5",
     "react": "^19.0.0",

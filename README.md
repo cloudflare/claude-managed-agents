@@ -88,6 +88,11 @@ You will need the following values:
 - `WEBHOOK_SECRET` — Standard Webhooks signing secret. Anthropic posts
   events to your Worker; we verify the signature before doing anything
   with them.
+- `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` — Cloudflare Access
+  settings used by the Worker to validate the `Cf-Access-Jwt-Assertion`
+  header before serving the dashboard, `/api/*`, `/openapi.json`, static
+  assets, or `/ws/terminal`. `/webhooks` remains HMAC-authenticated by
+  `WEBHOOK_SECRET`.
 
 **3. Set the secrets.**
 
@@ -106,6 +111,15 @@ npx wrangler secret put ANTHROPIC_ENVIRONMENT_KEY
 npx wrangler secret put ANTHROPIC_API_KEY
 npx wrangler secret put ENVIRONMENT_ID
 npx wrangler secret put WEBHOOK_SECRET
+```
+
+Set the Access values as non-secret vars in `wrangler.jsonc` before deploy:
+
+```jsonc
+"vars": {
+  "CF_ACCESS_TEAM_DOMAIN": "<your-team>.cloudflareaccess.com",
+  "CF_ACCESS_AUD": "<your-access-application-aud-tag>"
+}
 ```
 
 **4. Apply D1 migrations.** The database was auto-created in step 1
@@ -164,8 +178,10 @@ for more information.
 agent (the form lets you pick MicroVM or Isolate backend), kick off a
 session, watch the logs.
 
-**8. Secure the Dashboard** Once you have set things up,
-you will want to secure the dashboard by setting up Cloudflare Access.
+**8. Secure the Dashboard** The Worker validates Cloudflare Access JWTs
+server-side, so keep the dashboard behind a Cloudflare Access
+self-hosted application and configure `CF_ACCESS_TEAM_DOMAIN` and
+`CF_ACCESS_AUD`. Requests without a valid Access JWT fail closed.
 
 See [Cloudflare Access docs](./docs/securing-access.md) for more information.
 
@@ -209,6 +225,8 @@ Required secrets & vars:
 | `ANTHROPIC_ENVIRONMENT_KEY` | Anthropic environment key (sk-ant-oat01-...). The single credential the control plane uses for poll, ack, heartbeat, force-stop, and the session event stream. Renamed from `ANTHROPIC_ENV_KEY` in the 0.96 SDK / ant 1.8 CLI. |
 | `ANTHROPIC_API_KEY` | Anthropic API key (`sk-ant-...`) |
 | `WEBHOOK_SECRET` | HMAC secret for verifying webhook signatures |
+| `CF_ACCESS_TEAM_DOMAIN` | Cloudflare Access team domain, for example `<team>.cloudflareaccess.com` |
+| `CF_ACCESS_AUD` | Cloudflare Access Application Audience (AUD) tag for the protected dashboard/API app |
 | `CLOUDFLARE_ACCOUNT_ID` | R2 snapshots (presigned URL mode); also used by Browser Rendering REST tools |
 | `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | R2 snapshots (presigned URL mode) |
 | `BACKUP_BUCKET_NAME` | R2 snapshots (presigned URL mode) |

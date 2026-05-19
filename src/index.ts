@@ -8,6 +8,7 @@ import { handleWebhook, resolveBackend } from "./webhooks";
 import { isSessionId } from "./helpers";
 import { pruneOlderThan } from "./storage";
 import { handleEmail, type ForwardableEmailMessage } from "./email-handler";
+import { requireDashboardAuth } from "./auth";
 
 // `ContainerProxy` must be re-exported from the worker entrypoint — the
 // MicroVM Sandbox SDK looks it up via `ctx.exports.ContainerProxy` to
@@ -39,6 +40,11 @@ export default {
 
     if (url.pathname === "/webhooks" && request.method === "POST") {
       return handleWebhook(request, env);
+    }
+
+    const authFailure = await requireDashboardAuth(request, env);
+    if (authFailure) {
+      return authFailure;
     }
 
     // PTY terminal WebSocket upgrade. The frontend opens

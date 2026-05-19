@@ -28,6 +28,8 @@
   "vars": {
     "EMAIL_DOMAIN": "",
     "EMAIL_FROM": "",
+    "CF_ACCESS_TEAM_DOMAIN": "",
+    "CF_ACCESS_AUD": "",
   },
   // Static assets — Vite-built React + Kumo UI. The frontend is a SPA, so
   // unmatched paths fall back to /index.html and react-router takes over

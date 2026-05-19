@@ -18,6 +18,7 @@ export interface OpenApiDocument {
   info: Record<string, unknown>;
   servers?: Array<Record<string, unknown>>;
   tags?: Array<Record<string, unknown>>;
+  security?: Array<Record<string, string[]>>;
   paths: Record<string, Record<string, unknown>>;
   components?: Record<string, unknown>;
 }
@@ -135,6 +136,7 @@ export function buildOpenApiSpec(origin?: string): OpenApiDocument {
         description: "PTY WebSocket for MicroVM Sandbox containers.",
       },
     ],
+    security: [{ cloudflareAccessJwt: [] }],
     paths: {
       "/api/secrets": {
         get: {
@@ -1303,6 +1305,7 @@ export function buildOpenApiSpec(origin?: string): OpenApiDocument {
         post: {
           tags: ["Webhooks"],
           summary: "Anthropic webhook ingress",
+          security: [{ standardWebhookSignature: [] }],
           description: [
             "Receives webhook deliveries from Anthropic's Managed Agents API. Verified using HMAC-SHA256",
             "against `WEBHOOK_SECRET` (Standard Webhooks signature header).",
@@ -1390,6 +1393,22 @@ export function buildOpenApiSpec(origin?: string): OpenApiDocument {
       },
     },
     components: {
+      securitySchemes: {
+        cloudflareAccessJwt: {
+          type: "apiKey",
+          in: "header",
+          name: "Cf-Access-Jwt-Assertion",
+          description:
+            "Cloudflare Access JWT added by the Access-protected application and validated by the Worker.",
+        },
+        standardWebhookSignature: {
+          type: "apiKey",
+          in: "header",
+          name: "webhook-signature",
+          description:
+            "Standard Webhooks HMAC signature. `webhook-id` and `webhook-timestamp` headers are also required.",
+        },
+      },
       schemas: {
         EgressPolicy: {
           type: "object",

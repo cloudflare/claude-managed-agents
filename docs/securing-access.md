@@ -1,24 +1,29 @@
 # Securing Access
 
-The dashboard ships **open by default** — no auth on `/`, `/api/*`, or
-`/ws/terminal`. That's fine for a hobby deploy on a non-routable URL,
-but anything you let real users near needs auth in front of it.
+The dashboard is protected by Cloudflare Access JWT validation in the
+Worker. Requests to `/`, `/api/*`, `/openapi.json`, static assets, and
+`/ws/terminal` fail closed unless the Worker can validate the
+`Cf-Access-Jwt-Assertion` header against your Access application's AUD
+tag. `/webhooks` is the intentional bypass because Anthropic calls it
+directly; that route uses the Standard Webhooks signature check instead.
 
-The recommended setup: put the Worker behind
-[Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/configure-apps/self-hosted-apps/)
-and bypass the one path Anthropic calls directly (`/webhooks`). Custom
-tool calls don't traverse a public Worker endpoint — the Sandbox /
+Put the Worker behind
+[Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/configure-apps/self-hosted-apps/),
+then configure `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD`. Custom tool
+calls don't traverse a public Worker endpoint — the Sandbox /
 IsolateRunner Durable Object pulls them straight from Anthropic's
 session event stream and dispatches them in-DO against the Worker's
 bindings — so there's no public tool surface to protect beyond the
-dashboard itself. The existing server-side checks (Standard Webhooks
-signature, input validation) act as defence in depth.
+dashboard itself. The existing server-side checks (Access JWT
+validation, Standard Webhooks signature, input validation) act as
+defence in depth.
 
 ## What you can do
 
 - **Gate the dashboard** behind your IdP — Google, GitHub, Okta, OTP,
   whatever Access supports. Users see your normal SSO flow before they
-  ever reach the agent UI.
+  ever reach the agent UI, and the Worker verifies the Access JWT that
+  reaches it.
 - **Restrict who can create or run sessions.** Access policies can
   include / exclude by group, email, IP range, or service token.
 - **Issue service tokens** for CI / scripts so deploys and external
@@ -29,12 +34,12 @@ signature, input validation) act as defence in depth.
 
 ## Why use it
 
-- **Zero auth code in this Worker.** Access does the SSO, MFA, and
-  policy work outside the Worker. You don't carry your own session
-  store, login UI, or password reset flow.
+- **No app-owned login flow.** Access does the SSO, MFA, and policy work
+  outside the Worker. The Worker only validates the signed Access JWT, so
+  you don't carry your own session store, login UI, or password reset
+  flow.
 - **No secrets shared with browsers.** The dashboard's API calls go
-  through Access, which adds a JWT the Worker doesn't even need to
-  validate (Cloudflare does it at the edge).
+  through Access, which adds a signed JWT for the Worker to validate.
 - **Granular per-user policy.** Different agents for different teams,
   different environments for different on-call rotations.
 - **Audit log out of the box.** Access logs every authenticated
@@ -56,6 +61,16 @@ application:
 - **Policies** — at least one Allow policy for the people you want
   in. Add Service Tokens here too if you'll script anything.
 
+Copy these values into your Worker vars:
+
+- `CF_ACCESS_TEAM_DOMAIN` — your Access team domain, for example
+  `<team>.cloudflareaccess.com`.
+- `CF_ACCESS_AUD` — the Application Audience (AUD) tag from the Access
+  application.
+
+If either value is missing, the dashboard/API/terminal routes return
+`503` instead of serving open.
+
 ### 2. Bypass the webhook path
 
 Anthropic posts to `/webhooks` without an Access JWT — there's no way
@@ -64,8 +79,6 @@ covering:
 
 - `/webhooks` — Anthropic webhook ingress. The Standard Webhooks
   signature check (`WEBHOOK_SECRET`) is the auth here.
-- `/api/environments/drain` — optional, only if you trigger drains
-  from a script outside Access.
 
 The `email()` Worker entrypoint isn't HTTP, so Access doesn't see it
 and no policy is needed.
@@ -90,12 +103,17 @@ curl https://agents.example.com/api/egress-policies \
 ### 4. Lock down the dashboard's outbound surface
 
 The dashboard talks to `/api/*` from the user's browser, so the same
-Access policy that protects `/` automatically protects the API. No
-extra rule needed.
+Access policy that protects `/` also protects the API. The Worker also
+validates the Access JWT on those requests before dispatching them.
 
 ## What's already authenticated server-side
 
-The Worker doesn't trust headers blindly even before you add Access:
+The Worker doesn't trust headers blindly:
+
+**Access JWTs.** `src/auth.ts` validates `Cf-Access-Jwt-Assertion`
+against your Access team's JWKS endpoint, issuer, and application AUD
+before serving the dashboard, `/api/*`, `/openapi.json`, static assets,
+or `/ws/terminal`.
 
 **Webhook signatures.** `src/webhooks.ts` verifies every webhook with
 HMAC-SHA256:
@@ -150,8 +168,9 @@ issued from inside the sandbox itself (the container on MicroVM, the
 - [ ] **Set `WEBHOOK_SECRET`** to a strong value (`openssl rand -hex
       32`). Without it the Worker rejects all webhooks, but the
       verification is meaningful only when the secret has entropy.
-- [ ] **Put the dashboard behind Cloudflare Access** if it's
-      reachable from the internet.
+- [ ] **Put the dashboard behind Cloudflare Access** and configure
+      `CF_ACCESS_TEAM_DOMAIN` plus `CF_ACCESS_AUD`; without them the
+      dashboard/API/terminal fail closed.
 - [ ] **Bypass `/webhooks`** in Access; let the Standard Webhooks
       signature check handle it.
 - [ ] **Audit egress policies.** Default-deny is safer than
@@ -166,6 +185,7 @@ issued from inside the sandbox itself (the container on MicroVM, the
 ## Where to look
 
 - Webhook signature verification: `src/webhooks.ts` (`verifyStandardWebhook`)
+- Access JWT validation: `src/auth.ts` (`requireDashboardAuth`)
 - API id regexes: `src/helpers.ts`
 - Custom-tool dispatchers: `src/microvm/sandbox.ts` and
   `src/isolate/runner.ts` both call `runCustomToolDispatcher` from
