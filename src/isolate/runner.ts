@@ -4,6 +4,7 @@ import { Workspace } from "@cloudflare/shell";
 import { Agent } from "agents";
 import type { FiberRecoveryContext } from "agents";
 import { auditAgentTools } from "./audit";
+import { fingerprintPolicy } from "./policy-fingerprint";
 import { resolveSessionPolicy } from "../egress/resolve";
 import type { CompiledPolicy } from "../egress/types";
 import {
@@ -205,38 +206,6 @@ export class IsolateRunner extends Agent<Env, IsolateSessionState> {
     return a.every((name, i) => name === b[i]);
   }
 
-  // Stable fingerprint of a compiled policy. Used to detect drift between
-  // the policy the running gateway was built with and a fresh resolution
-  // — when the two diverge, the dispatcher restarts so the new policy
-  // takes effect mid-session rather than on the next boot.
-  //
-  // Includes everything the outbound handler actually consumes: id,
-  // name, allow/deny patterns, header injection targets + values, vpc
-  // routes, and the proxy code. Secret values inside header injections
-  // are included so a secret-rotation in KV also triggers a restart.
-  private fingerprintPolicy(policy: CompiledPolicy | null): string {
-    if (!policy) return "(none)";
-    return JSON.stringify({
-      id: policy.policyId,
-      name: policy.policyName,
-      allow: [...policy.allow].sort(),
-      deny: [...policy.deny].sort(),
-      headerInjections: [...policy.headerInjections]
-        .map((h) => ({
-          target: h.target,
-          header: h.header,
-          secret: h.secretValue,
-        }))
-        .sort((a, b) =>
-          (a.header + a.target).localeCompare(b.header + b.target),
-        ),
-      vpcRoutes: [...policy.vpcRoutes].sort((a, b) =>
-        (a.host + a.binding).localeCompare(b.host + b.binding),
-      ),
-      proxy: policy.proxy?.code ?? null,
-    });
-  }
-
   // Boot the dispatcher detached. Anthropic streams `agent.custom_tool_use`
   // events to it; the dispatcher executes them locally against the
   // Workspace and posts back `user.custom_tool_result`. The dispatcher
@@ -255,7 +224,7 @@ export class IsolateRunner extends Agent<Env, IsolateSessionState> {
     // policy snapshot taken on initial boot. Same lookup the MicroVM
     // Sandbox path uses, so a single policy edit applies to either backend.
     const policy = await resolveSessionPolicy(this.env, opts.sessionId);
-    const desiredPolicyFp = this.fingerprintPolicy(policy);
+    const desiredPolicyFp = await fingerprintPolicy(policy);
 
     if (await this.isLive()) {
       const toolsOk = this.toolNamesMatch(desiredNames);
@@ -609,7 +578,7 @@ export class IsolateRunner extends Agent<Env, IsolateSessionState> {
 
     try {
       const policy = await resolveSessionPolicy(this.env, s.sessionId);
-      const desiredPolicyFp = this.fingerprintPolicy(policy);
+      const desiredPolicyFp = await fingerprintPolicy(policy);
       const desiredNames = this.computeDesiredToolNames();
       await this.bootDispatcher(opts, policy, desiredPolicyFp, desiredNames);
     } catch (error) {

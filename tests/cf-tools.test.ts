@@ -1,4 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../src/vpc.generated", () => ({
+  VPC_BINDINGS: [
+    {
+      binding: "RESPONDY",
+      type: "service",
+      id: "00000000-0000-0000-0000-000000000000",
+    },
+  ],
+}));
+
 import {
   CF_TOOL_DEFS,
   buildCfTools,
