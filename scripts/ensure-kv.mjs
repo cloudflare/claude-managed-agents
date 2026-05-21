@@ -32,13 +32,30 @@
 // needs the same credentials, so this isn't an extra burden.
 
 import { execSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const wranglerPath = resolve(here, "..", "wrangler.jsonc");
+const repoRoot = resolve(here, "..");
+const wranglerPath = resolve(repoRoot, "wrangler.jsonc");
+
+// Locate the wrangler binary explicitly. `npx --no-install wrangler`
+// is unreliable in CI when the script's cwd is /tmp (e.g. Workers
+// Builds with `bun install`): npx walks up from cwd looking for
+// node_modules, finds none, and exits before we can reach the
+// project's local install. Pointing at node_modules/.bin/wrangler
+// directly sidesteps the resolution entirely.
+function resolveWranglerBin() {
+  const local = resolve(repoRoot, "node_modules", ".bin", "wrangler");
+  if (existsSync(local)) return local;
+  // Fall back to PATH lookup. If wrangler is globally installed (rare
+  // but possible on a maintainer's machine), this still works. If it
+  // isn't, the spawn will fail and runWrangler() prints a hint.
+  return "wrangler";
+}
+const wranglerBin = resolveWranglerBin();
 
 // JSONC stripper — mirrors scripts/ensure-d1.mjs. We only parse for
 // reads; writes go through targeted regex swaps so comments survive.
@@ -107,6 +124,23 @@ if (kvBindings.length === 0) {
   process.exit(0);
 }
 
+// Fast path: skip the API round-trip when we're running locally (not in
+// Workers Builds) and every binding already has a populated id. Workers
+// Builds always re-runs because its workspace is fresh on every build —
+// we can't trust that pre-populated IDs are present there. Locally,
+// repeat deploys after a successful one are the common case; this
+// avoids the listing/creating API calls when there's nothing to do.
+const isWorkersCi = process.env.WORKERS_CI === "1";
+const allPopulated = kvBindings.every(
+  (b) => typeof b.id === "string" && b.id.length > 0,
+);
+if (!isWorkersCi && allPopulated) {
+  console.log(
+    "[ensure-kv] all ids populated and not in Workers Builds, skipping API check",
+  );
+  process.exit(0);
+}
+
 // `wrangler kv namespace list` validates wrangler.jsonc before running
 // and rejects empty `id` strings — exactly the state this script is
 // meant to fix. Bypass that by running from a scratch directory with
@@ -115,12 +149,31 @@ if (kvBindings.length === 0) {
 // programmatic dep on wrangler's internals.
 const scratchDir = mkdtempSync(join(tmpdir(), "ensure-kv-"));
 
+// Wrap wrangler invocations so a multi-account auth failure surfaces a
+// concrete action instead of a stack trace. Wrangler's own error
+// message already mentions CLOUDFLARE_ACCOUNT_ID but our wrapper adds
+// context (this is happening on prebuild, not on the user's deploy
+// command).
+function runWrangler(args, options = {}) {
+  try {
+    return execSync(`"${wranglerBin}" ${args}`, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "inherit"],
+      cwd: scratchDir,
+      ...options,
+    });
+  } catch (err) {
+    console.error(
+      "[ensure-kv] wrangler invocation failed. If the error above mentions multiple accounts, set CLOUDFLARE_ACCOUNT_ID before running:\n" +
+        "  export CLOUDFLARE_ACCOUNT_ID=<your-account-id>\n" +
+        "If wrangler isn't authenticated, run `npx wrangler login` first.",
+    );
+    process.exit(1);
+  }
+}
+
 function listNamespaces() {
-  const out = execSync("npx --no-install wrangler kv namespace list", {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "inherit"],
-    cwd: scratchDir,
-  });
+  const out = runWrangler("kv namespace list");
   // wrangler prints other lines before the JSON when warnings fire; grab
   // the first `[`-rooted block to be safe.
   const start = out.indexOf("[");
@@ -146,24 +199,29 @@ function listNamespaces() {
 function createNamespace(title) {
   // Inherit stdio so the user sees wrangler's progress + any auth errors.
   // Run from scratch dir for the same reason as listNamespaces.
-  execSync(`npx --no-install wrangler kv namespace create "${title}"`, {
-    stdio: "inherit",
-    cwd: scratchDir,
-  });
+  runWrangler(`kv namespace create "${title}"`, { stdio: "inherit" });
+}
+
+// Normalise titles for fuzzy comparison. Wrangler's auto-provisioning
+// lowercases bindings and renders `_` as `-` (e.g. `EGRESS_POLICIES`
+// becomes `egress-policies`), so we have to collapse both before
+// matching.
+function normaliseForMatch(str) {
+  return (str || "").toLowerCase().replace(/_/g, "-");
 }
 
 function findExisting(namespaces, binding) {
   const canonical = `${workerName}-${binding}`;
   const exact = namespaces.find((n) => n.title === canonical);
   if (exact) return exact;
-  // Fuzzy fallback: previously-auto-provisioned namespaces may use a
-  // slightly different convention (e.g. lowercased binding). Match on
-  // anything that contains both worker name and binding name.
+  // Fuzzy fallback: previously-auto-provisioned namespaces typically use
+  // `<worker>-<binding-lowercased-and-hyphenated>`. Normalise both sides
+  // so e.g. `EGRESS_POLICIES` matches an existing `egress-policies`.
+  const targetWorker = normaliseForMatch(workerName);
+  const targetBinding = normaliseForMatch(binding);
   const fuzzy = namespaces.filter((n) => {
-    const t = (n.title || "").toLowerCase();
-    return (
-      t.includes(workerName.toLowerCase()) && t.includes(binding.toLowerCase())
-    );
+    const t = normaliseForMatch(n.title);
+    return t.includes(targetWorker) && t.includes(targetBinding);
   });
   if (fuzzy.length === 1) return fuzzy[0];
   return null;

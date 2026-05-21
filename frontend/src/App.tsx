@@ -382,7 +382,15 @@ function SetupBanner({ config }: { config: ConfigResponse | null }) {
           {config.missing.length === 1 ? "is" : "are"} not set. Add{" "}
           {config.missing.length === 1 ? "it" : "them"} to{" "}
           <code>.dev.vars</code> for local development, or run{" "}
-          <code>npx wrangler secret put NAME</code> for production.
+          <code>npx wrangler secret put NAME</code> for production. See the{" "}
+          <a
+            href="https://github.com/cloudflare/claude-managed-agents#onboarding-guide"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Onboarding Guide
+          </a>{" "}
+          for full setup instructions.
         </span>
       }
     />

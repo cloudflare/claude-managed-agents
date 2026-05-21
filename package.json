@@ -10,16 +10,15 @@
     "dev": "npm run build && wrangler dev",
     "start": "npm run dev",
     "build": "vite build",
-    "prebuild": "node scripts/sync-vpc-bindings.mjs && node scripts/copy-redoc.mjs",
+    "prebuild": "node scripts/ensure-kv.mjs && node scripts/ensure-d1.mjs && node scripts/sync-vpc-bindings.mjs && node scripts/copy-redoc.mjs",
     "vpc:sync": "node scripts/sync-vpc-bindings.mjs",
-    "container:apply": "node scripts/apply-container-config.mjs",
     "frontend:dev": "vite",
     "cf-typegen": "wrangler types",
     "typecheck": "tsc --noEmit && tsc -p frontend/tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:migrate": "wrangler d1 migrations apply claude-managed-agents-db --local",
-    "db:migrate:remote": "wrangler d1 migrations apply claude-managed-agents-db --remote"
+    "db:migrate": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.9.0",
@@ -35,35 +34,35 @@
   },
   "cloudflare": {
     "bindings": {
+      "ENVIRONMENT_ID": {
+        "description": "Anthropic environment ID this Worker polls for work. Create a **Self-managed** environment in the [Claude Platform Console](https://platform.claude.com/workspaces/default/environments)."
+      },
       "ANTHROPIC_ENVIRONMENT_KEY": {
-        "description": "Anthropic environment key — the single credential the control plane uses to authenticate every call in the worker flow (poll, ack, heartbeat, force-stop, session event stream, skill download). Renamed from ANTHROPIC_ENV_KEY in the 0.96 SDK / ant 1.8 CLI."
+        "description": "Anthropic environment key (`sk-ant-oat01-...`) — the single credential the control plane uses to authenticate every call in the worker flow (poll, ack, heartbeat, force-stop, session event stream, skill download). Generated alongside the environment above."
       },
       "ANTHROPIC_API_KEY": {
-        "description": "Anthropic API key (sk-ant-...) — used to call the Managed Agents API (/v1/agents, /v1/sessions)."
+        "description": "Anthropic API key (`sk-ant-...`) — used to call the Managed Agents API (`/v1/agents`, `/v1/sessions`)."
       },
       "WEBHOOK_SECRET": {
-        "description": "HMAC signing secret from the Anthropic Console — verifies incoming webhook requests."
+        "description": "HMAC signing secret from the [Anthropic Console webhook settings](https://platform.claude.com/settings/workspaces/default/webhooks). Set the webhook URL to `https://<your-worker>.workers.dev/webhooks` after the first deploy completes."
       },
-      "ENVIRONMENT_ID": {
-        "description": "Anthropic environment ID this Worker polls for work."
-      }
-    },
-    "deployVariables": {
-      "EMAIL_DOMAIN": {
-        "description": "Zone the per-session inbox addresses are minted under (e.g. agents.example.com). Required for the cf_email_inbox / cf_email_read tools and the catch-all email route. Leave blank to disable the inbox side of the email tools.",
-        "default": ""
+      "CLOUDFLARE_ACCOUNT_ID": {
+        "description": "Optional. Required only for the MicroVM snapshot system (R2 presigned URLs). Found in the URL of your Cloudflare dashboard. Skip if you're running Isolate-only sandboxes."
       },
-      "EMAIL_FROM": {
-        "description": "Default sender address for cf_email_send. Must belong to a zone you control via Cloudflare Email Routing. Leave blank to require the agent to pass `from` explicitly on every send.",
-        "default": ""
+      "R2_ACCESS_KEY_ID": {
+        "description": "Optional. Required only for the MicroVM snapshot system. [Mint an R2 access key](https://dash.cloudflare.com/r2/api-tokens/create?type=user) with read+write on the snapshots bucket and paste the Access Key ID."
+      },
+      "R2_SECRET_ACCESS_KEY": {
+        "description": "Optional. Secret half of the R2 access key above."
+      },
+      "BACKUP_BUCKET_NAME": {
+        "description": "Optional. Name of the snapshots R2 bucket — must match the `bucket_name` set on the `BACKUP_BUCKET` binding in `wrangler.jsonc` (default: `claude-managed-agents-snapshots`)."
       },
       "CF_ACCESS_TEAM_DOMAIN": {
-        "description": "Cloudflare Access team domain used to validate Cf-Access-Jwt-Assertion, for example <team>.cloudflareaccess.com.",
-        "default": ""
+        "description": "Cloudflare Access team domain used to validate `Cf-Access-Jwt-Assertion`, for example `<team>.cloudflareaccess.com`."
       },
       "CF_ACCESS_AUD": {
-        "description": "Cloudflare Access Application Audience (AUD) tag for the protected dashboard/API application.",
-        "default": ""
+        "description": "Cloudflare Access Application Audience (AUD) tag for the protected dashboard/API application."
       }
     }
   },

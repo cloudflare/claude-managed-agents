@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeEnv, type FakeEnv } from "./helpers";
@@ -87,6 +88,24 @@ afterEach(() => {
 });
 
 describe("dashboard authentication", () => {
+  it("runs the Worker before static assets so dashboard files are auth-gated", () => {
+    const wrangler = readFileSync(
+      new URL("../wrangler.jsonc", import.meta.url),
+      "utf8",
+    );
+
+    expect(wrangler).toMatch(/"run_worker_first"\s*:\s*true/);
+  });
+
+  it("applies Access auth before falling back to static assets", async () => {
+    const res = await callWorker(makeEnv(), "/");
+
+    expect(res.status).toBe(503);
+    await expect(res.json()).resolves.toMatchObject({
+      error: expect.stringContaining("CF_ACCESS_TEAM_DOMAIN"),
+    });
+  });
+
   it("fails closed when Cloudflare Access is not configured", async () => {
     const res = await callWorker(makeEnv(), "/api/config");
 

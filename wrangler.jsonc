@@ -10,14 +10,11 @@
   // Non-secret vars. Secrets go through `wrangler secret put`. Anything you
   // put here is visible in the dashboard and stored in the deploy bundle.
   //
-  // EMAIL_DOMAIN / EMAIL_FROM are intentionally blank in the committed
-  // file so a fork-and-deploy doesn't ship the maintainer's zone. Both
-  // are promoted to `package.json#cloudflare.deployVariables`, which
-  // means the Deploy to Cloudflare button prompts for them and
-  // `scripts/apply-container-config.mjs` (run on `prebuild`) writes the
-  // operator's values back into this block before deploy. Local devs can
-  // either set the env vars before `npm run deploy` or edit the strings
-  // below directly.
+  // EMAIL_DOMAIN / EMAIL_FROM are intentionally blank so a fork-and-deploy
+  // doesn't ship the maintainer's zone. The Deploy to Cloudflare button
+  // prompts for them at setup time (descriptions live in
+  // `package.json#cloudflare.bindings`). Local devs can either set the
+  // env vars before `npm run deploy` or edit the strings below directly.
   //
   // EMAIL_DOMAIN: zone the per-session inbox addresses are minted under.
   // Set to your verified Email Routing zone (e.g. `agents.example.com`).
@@ -25,45 +22,54 @@
   // catch-all route forwards into this Worker. Leaving it unset disables
   // the inbox-side of the email tools (send still works if EMAIL_FROM /
   // SEND_EMAIL are configured).
-  "vars": {
-    "EMAIL_DOMAIN": "",
-    "EMAIL_FROM": "",
-    "CF_ACCESS_TEAM_DOMAIN": "",
-    "CF_ACCESS_AUD": "",
-  },
+
+  // "vars": {
+  //   "EMAIL_DOMAIN": "",
+  //   "EMAIL_FROM": "",
+  //   "CF_ACCESS_TEAM_DOMAIN": "<your-team>.cloudflareaccess.com",
+  //   "CF_ACCESS_AUD": "<your-access-application-aud-tag>",
+  // },
+
   // Static assets — Vite-built React + Kumo UI. The frontend is a SPA, so
   // unmatched paths fall back to /index.html and react-router takes over
   // client-side. Without this, /sandboxes/<id> would 404 on refresh.
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": [
-      "/api/*",
-      "/webhooks",
-      "/ws/*",
-      // OpenAPI spec at the conventional root path so CLI / agent
-      // tooling can probe `/openapi.json` directly.
-      "/openapi.json",
-      "/openapi",
-    ],
+    // Run the Worker before all assets so Access JWT validation gates the
+    // dashboard shell and bundled static files, not just API/terminal routes.
+    "run_worker_first": true,
     "not_found_handling": "single-page-application",
   },
   // KV: SECRETS holds named secret values used by header-injection rules and
   // the proxy function's env. EGRESS_POLICIES holds the policy JSON keyed by
   // `policy:<id>`.
+  //
+  // The empty `"id": ""` placeholders are intentional. `scripts/ensure-kv.mjs`
+  // runs on `prebuild` and patches the real namespace IDs in place — either
+  // by adopting a namespace that already exists in the account (case the
+  // Workers Builds / Deploy to Cloudflare flow hits on its second deploy) or
+  // by creating a fresh one named `<worker-name>-<binding>`. Leaving the
+  // placeholders means wrangler.jsonc can be committed without account-
+  // specific IDs.
   "kv_namespaces": [
     {
       "binding": "SECRETS",
+      "id": "",
     },
     {
       "binding": "EGRESS_POLICIES",
+      "id": "",
     },
   ],
-  // D1: webhook events + session metadata.
+  // D1: webhook events + session metadata. `database_id` is patched on
+  // `prebuild` by `scripts/ensure-d1.mjs` (same lifecycle as the KV
+  // namespaces above).
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "claude-managed-agents-db",
+      "database_id": "",
       "migrations_dir": "./migrations",
     },
   ],

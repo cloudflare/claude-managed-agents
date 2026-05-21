@@ -29,13 +29,24 @@
 // itself needs the same credentials, so this isn't an extra burden.
 
 import { execSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const wranglerPath = resolve(here, "..", "wrangler.jsonc");
+const repoRoot = resolve(here, "..");
+const wranglerPath = resolve(repoRoot, "wrangler.jsonc");
+
+// Locate the wrangler binary explicitly — see ensure-kv.mjs for the
+// rationale (npx --no-install can't find a project-local wrangler
+// when cwd is /tmp in Workers Builds).
+function resolveWranglerBin() {
+  const local = resolve(repoRoot, "node_modules", ".bin", "wrangler");
+  if (existsSync(local)) return local;
+  return "wrangler";
+}
+const wranglerBin = resolveWranglerBin();
 
 // `wrangler d1 list` validates the project's wrangler.jsonc before
 // running, which fails when ensure-kv.mjs hasn't yet populated the
@@ -108,15 +119,45 @@ if (!dbConfig || typeof dbConfig.database_name !== "string") {
 }
 const dbName = dbConfig.database_name;
 
+// Fast path: skip the API round-trip locally when database_id is
+// already populated. Workers Builds always re-runs because the
+// workspace is fresh on every build. See ensure-kv.mjs for the same
+// pattern.
+const isWorkersCi = process.env.WORKERS_CI === "1";
+const currentDbId =
+  typeof dbConfig.database_id === "string" ? dbConfig.database_id : "";
+if (!isWorkersCi && currentDbId.length > 0) {
+  console.log(
+    "[ensure-d1] database_id populated and not in Workers Builds, skipping API check",
+  );
+  process.exit(0);
+}
+
+// Wrap wrangler invocations so a multi-account auth failure surfaces a
+// concrete action instead of a stack trace.
+function runWrangler(args, options = {}) {
+  try {
+    return execSync(`"${wranglerBin}" ${args}`, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "inherit"],
+      cwd: scratchDir,
+      ...options,
+    });
+  } catch (err) {
+    console.error(
+      "[ensure-d1] wrangler invocation failed. If the error above mentions multiple accounts, set CLOUDFLARE_ACCOUNT_ID before running:\n" +
+        "  export CLOUDFLARE_ACCOUNT_ID=<your-account-id>\n" +
+        "If wrangler isn't authenticated, run `npx wrangler login` first.",
+    );
+    process.exit(1);
+  }
+}
+
 // `wrangler d1 list --json` prints a clean JSON array to stdout. We
-// shell out via execSync so we don't have to take a wrangler programmatic
+// shell out via the CLI so we don't have to take a wrangler programmatic
 // dep — the CLI is the supported entry point.
 function listDatabases() {
-  const out = execSync("npx --no-install wrangler d1 list --json", {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "inherit"],
-    cwd: scratchDir,
-  });
+  const out = runWrangler("d1 list --json");
   try {
     return JSON.parse(out);
   } catch (err) {
@@ -134,10 +175,7 @@ let match = dbs.find((d) => d.name === dbName);
 if (!match) {
   console.log(`[ensure-d1] creating D1 database "${dbName}"`);
   // Inherit stdio so the user sees wrangler's progress + any auth errors.
-  execSync(`npx --no-install wrangler d1 create ${dbName}`, {
-    stdio: "inherit",
-    cwd: scratchDir,
-  });
+  runWrangler(`d1 create ${dbName}`, { stdio: "inherit" });
   dbs = listDatabases();
   match = dbs.find((d) => d.name === dbName);
   if (!match) {
