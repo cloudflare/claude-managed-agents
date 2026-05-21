@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "claude-managed-agents-control-plane",
+  "workers_dev": true,
   "main": "src/index.ts",
   "compatibility_date": "2026-05-18",
   "compatibility_flags": ["nodejs_compat"],
@@ -59,11 +60,11 @@
   "kv_namespaces": [
     {
       "binding": "SECRETS",
-      "id": "",
+      "id": "5973886b7a0f428cb826012058297dca",
     },
     {
       "binding": "EGRESS_POLICIES",
-      "id": "",
+      "id": "c8bceda6032d4401b3dbc3bc8a26156b",
     },
   ],
   // D1: webhook events + session metadata. `database_id` is patched on
@@ -73,27 +74,14 @@
     {
       "binding": "DB",
       "database_name": "claude-managed-agents-db",
-      "database_id": "",
+      "database_id": "2ba00223-5ea0-449c-8df7-10a645a541bd",
       "migrations_dir": "./migrations",
     },
   ],
-  // Container DO — one sandbox per session, driven by webhooks.
-  "containers": [
-    {
-      "class_name": "Sandbox",
-      "image": "./Dockerfile",
-      "instance_type": "standard-1", // change this for larger or smaller containers
-      "name": "claude-managed-agents-sandbox",
-      "max_instances": 100, // change this for more concurrent agents
-      // 30-minute grace period for active sessions during a rollout — gives
-      // an in-flight agent run time to wind down before the old container
-      // is replaced with the new image.
-      "rollout_active_grace_period": 1800,
-      // Single-step 100% rollout: roll the new image to every container at
-      // once. The grace period above protects active sessions.
-      "rollout_step_percentage": [100],
-    },
-  ],
+  // MicroVM container backend is disabled in this account because the
+  // Cloudflare Containers/Cloudchamber image push returned Unauthorized.
+  // IsolateRunner remains available; restore this containers block after
+  // enabling the required Cloudflare account capability/token scope.
   "durable_objects": {
     "bindings": [
       {
@@ -106,21 +94,10 @@
       },
     ],
   },
-  // Worker Loader bindings:
-  //   PROXY_LOADER — egress proxy executes user-defined proxy functions
-  //                  stored as strings on egress policies.
-  //   LOADER       — Isolate tools (code execution, browser tools) use this
-  //                  to load sandboxed isolates at runtime. Without it the
-  //                  `execute` / `run_file` / `browser_*` tools error out
-  //                  with a clear message instead of failing silently.
-  "worker_loaders": [
-    {
-      "binding": "PROXY_LOADER",
-    },
-    {
-      "binding": "LOADER",
-    },
-  ],
+  // Worker Loader / Dynamic Workers are disabled for this account because
+  // they require a paid Workers plan. Without LOADER/PROXY_LOADER, isolate
+  // code/browser tools and dynamic egress proxy functions are intentionally
+  // gated off by the app instead of failing silently.
   // Browser Rendering binding for Isolate Sandbox CDP tools and the
   // Cloudflare Browser Rendering REST tools (screenshot, fetch_to_markdown,
   // browse, web_fetch). Always declared — every Workers account is entitled
@@ -135,17 +112,10 @@
   "ai": {
     "binding": "AI",
   },
-  // R2 bucket for sandbox snapshots. The Sandbox SDK reads BACKUP_BUCKET as
-  // an R2 binding (used directly in dev via `localBucket: true`); in
-  // production it presigns URLs against R2 — that path needs the secrets
-  // R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, BACKUP_BUCKET_NAME, and
-  // CLOUDFLARE_ACCOUNT_ID. See README → Snapshots.
-  "r2_buckets": [
-    {
-      "binding": "BACKUP_BUCKET",
-      "bucket_name": "claude-managed-agents-snapshots",
-    },
-  ],
+  // R2 snapshot storage is disabled for this deployment because R2 is not
+  // enabled on the Cloudflare account. This is acceptable for Isolate-only
+  // or stateless sessions; MicroVM workspace snapshots require enabling R2
+  // and restoring the BACKUP_BUCKET binding below. See README → Snapshots.
   // Email Routing send_email binding for `email_send`. Configure
   // your zone in the dashboard (Email → Email Routing → Destination
   // addresses) and add the verified destinations to `destination_addresses`.
