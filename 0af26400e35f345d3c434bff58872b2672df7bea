@@ -1,0 +1,23 @@
+Dockerfile
+  ae2ca69abbf86d4e 38-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "0af26400e35f345d3c434bff58872b2672df7bea",
+  "prompts": {
+    "ae2ca69abbf86d4e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_1b3271e1fffeEfg5wAsdTvKZCr",
+        "model": "anthropic/claude-opus-4-7"
+      },
+      "human_author": "Mike Nomitch",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 0,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  }
+}
