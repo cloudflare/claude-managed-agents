@@ -145,9 +145,14 @@ You will need the following values:
   control plane to authenticate calls from the specified Claude agent
   environment
 - `ANTHROPIC_API_KEY` — used by the Worker to make calls to Anthropic
-- `WEBHOOK_SECRET` — Standard Webhooks signing secret. Anthropic
-  posts events to your Worker; we verify the signature before doing
-  anything with them.
+- `WEBHOOK_SECRET` — Standard Webhooks signing secret. Anthropic posts
+  events to your Worker; we verify the signature before doing anything
+  with them.
+- `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` — Cloudflare Access
+  settings used by the Worker to validate the `Cf-Access-Jwt-Assertion`
+  header before serving the dashboard, `/api/*`, `/openapi.json`, static
+  assets, or `/ws/terminal`. `/webhooks` remains HMAC-authenticated by
+  `WEBHOOK_SECRET`.
 
 ---
 
@@ -197,6 +202,15 @@ npx wrangler secret put ENVIRONMENT_ID
 npx wrangler secret put ANTHROPIC_ENVIRONMENT_KEY
 npx wrangler secret put ANTHROPIC_API_KEY
 npx wrangler secret put WEBHOOK_SECRET
+```
+
+Set the Access values as non-secret vars in `wrangler.jsonc` before deploy:
+
+```jsonc
+"vars": {
+  "CF_ACCESS_TEAM_DOMAIN": "<your-team>.cloudflareaccess.com",
+  "CF_ACCESS_AUD": "<your-access-application-aud-tag>"
+}
 ```
 
 ---
@@ -274,10 +288,12 @@ logs.
 
 ### Step 8. Secure the dashboard
 
-**Your control plane is not secured by default!**
-
-Once you have set things up, you will want to secure the dashboard
-by setting up Cloudflare Access.
+The Worker validates Cloudflare Access JWTs server-side before serving
+the dashboard shell, static assets, `/api/*`, `/openapi.json`, and
+`/ws/terminal`, so configure `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD`
+before exposing the control plane. Requests without valid Access config
+or a valid Access JWT fail closed. `/webhooks` remains reachable and is
+authenticated by `WEBHOOK_SECRET`.
 
 See [Cloudflare Access docs](./docs/securing-access.md) for more
 information.
@@ -326,6 +342,8 @@ Required secrets & vars:
 | `ANTHROPIC_ENVIRONMENT_KEY` | Anthropic environment key (sk-ant-oat01-...). The single credential the control plane uses for poll, ack, heartbeat, force-stop, and the session event stream. Renamed from `ANTHROPIC_ENV_KEY` in the 0.96 SDK / ant 1.8 CLI. |
 | `ANTHROPIC_API_KEY` | Anthropic API key (`sk-ant-...`) |
 | `WEBHOOK_SECRET` | HMAC secret for verifying webhook signatures |
+| `CF_ACCESS_TEAM_DOMAIN` | Cloudflare Access team domain, for example `<team>.cloudflareaccess.com` |
+| `CF_ACCESS_AUD` | Cloudflare Access Application Audience (AUD) tag for the protected dashboard/API app |
 | `CLOUDFLARE_ACCOUNT_ID` | R2 snapshots (presigned URL mode); also used by Browser Rendering REST tools |
 | `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | R2 snapshots (presigned URL mode) |
 | `BACKUP_BUCKET_NAME` | R2 snapshots (presigned URL mode) |

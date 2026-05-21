@@ -57,6 +57,12 @@
       },
       "BACKUP_BUCKET_NAME": {
         "description": "Optional. Name of the snapshots R2 bucket — must match the `bucket_name` set on the `BACKUP_BUCKET` binding in `wrangler.jsonc` (default: `claude-managed-agents-snapshots`)."
+      },
+      "CF_ACCESS_TEAM_DOMAIN": {
+        "description": "Cloudflare Access team domain used to validate `Cf-Access-Jwt-Assertion`, for example `<team>.cloudflareaccess.com`."
+      },
+      "CF_ACCESS_AUD": {
+        "description": "Cloudflare Access Application Audience (AUD) tag for the protected dashboard/API application."
       }
     }
   },
@@ -76,6 +82,7 @@
     "agents": "^0.12.4",
     "ai": "^6.0.174",
     "hono": "^4.12.9",
+    "jose": "6.2.3",
     "marked": "^14.1.4",
     "minimatch": "^10.2.5",
     "react": "^19.0.0",

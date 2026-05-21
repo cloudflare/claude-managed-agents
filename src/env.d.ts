@@ -11,6 +11,12 @@ declare namespace Cloudflare {
     // Anthropic — required secret (also declared in package.json `bindings`).
     WEBHOOK_SECRET: string;
 
+    // Cloudflare Access — required to serve the dashboard, API, static
+    // assets, OpenAPI document, and terminal WebSocket. `/webhooks` stays
+    // HMAC-authenticated and bypasses this gate.
+    CF_ACCESS_TEAM_DOMAIN?: string;
+    CF_ACCESS_AUD?: string;
+
     // Override the Anthropic API host. Defaults to https://api.anthropic.com
     // when unset; see `resolveAnthropicBaseURL` in src/anthropic.ts.
     ANTHROPIC_BASE_URL?: string;

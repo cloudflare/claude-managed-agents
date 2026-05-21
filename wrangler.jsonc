@@ -26,6 +26,8 @@
   // "vars": {
   //   "EMAIL_DOMAIN": "",
   //   "EMAIL_FROM": "",
+  //   "CF_ACCESS_TEAM_DOMAIN": "<your-team>.cloudflareaccess.com",
+  //   "CF_ACCESS_AUD": "<your-access-application-aud-tag>",
   // },
 
   // Static assets — Vite-built React + Kumo UI. The frontend is a SPA, so
@@ -34,15 +36,9 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": [
-      "/api/*",
-      "/webhooks",
-      "/ws/*",
-      // OpenAPI spec at the conventional root path so CLI / agent
-      // tooling can probe `/openapi.json` directly.
-      "/openapi.json",
-      "/openapi",
-    ],
+    // Run the Worker before all assets so Access JWT validation gates the
+    // dashboard shell and bundled static files, not just API/terminal routes.
+    "run_worker_first": true,
     "not_found_handling": "single-page-application",
   },
   // KV: SECRETS holds named secret values used by header-injection rules and

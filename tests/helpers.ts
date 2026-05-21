@@ -458,6 +458,8 @@ export interface FakeEnv {
   ANTHROPIC_ENVIRONMENT_KEY: string;
   ENVIRONMENT_ID: string;
   WEBHOOK_SECRET: string;
+  CF_ACCESS_TEAM_DOMAIN?: string;
+  CF_ACCESS_AUD?: string;
   ANTHROPIC_BASE_URL?: string;
   CLOUDFLARE_API_TOKEN?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;

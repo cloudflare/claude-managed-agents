@@ -4,6 +4,13 @@ ANTHROPIC_API_KEY=<your-anthropic-api-key>
 
 WEBHOOK_SECRET=<your-anthropic-webhook-signing-secret>
 
+# Required for the dashboard, API, OpenAPI document, static assets, and
+# terminal WebSocket. Create a Cloudflare Access self-hosted application for
+# your Worker hostname, then copy its team domain and Application Audience
+# (AUD) tag here. `/webhooks` stays reachable and uses WEBHOOK_SECRET.
+CF_ACCESS_TEAM_DOMAIN=<your-team>.cloudflareaccess.com
+CF_ACCESS_AUD=<your-access-application-aud-tag>
+
 # Required (unless you're exclusively using Isolate sandboxes) —
 # Sandbox snapshot system (R2). MicroVM /workspace is discarded on
 # every container hibernation without this, so wire it up as part of
