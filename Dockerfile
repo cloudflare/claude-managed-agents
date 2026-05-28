@@ -42,6 +42,23 @@ RUN curl -fsSL "https://github.com/anthropics/anthropic-cli/releases/download/v$
     | tar -xz -C /usr/local/bin ant \
  && chmod +x /usr/local/bin/ant
 
+# ---------------------------------------------------------------------------
+# Trust the Cloudflare egress proxy CA for Go-based binaries.
+#
+# The sandbox runtime (interceptHttps = true) injects an ephemeral CA at
+# /etc/cloudflare/certs/cloudflare-containers-ca.crt and auto-trusts it
+# for curl, Node.js, Python, and Git on startup — but Go's net/http uses
+# its own cert loading from /etc/ssl/certs/ca-certificates.crt and does
+# not pick up the injected CA automatically. Any Go CLI (gh, terraform,
+# kubectl, etc.) will fail with "x509: certificate signed by unknown
+# authority" when the egress proxy intercepts HTTPS.
+#
+# This profile.d script appends the Cloudflare CA to the system bundle
+# on first shell init so Go binaries can verify TLS through the proxy.
+# ---------------------------------------------------------------------------
+RUN printf '#!/bin/sh\nif [ -f /etc/cloudflare/certs/cloudflare-containers-ca.crt ] && ! grep -q "Cloudflare" /etc/ssl/certs/ca-certificates.crt 2>/dev/null; then\n  cat /etc/cloudflare/certs/cloudflare-containers-ca.crt >> /etc/ssl/certs/ca-certificates.crt 2>/dev/null || true\nfi\n' > /etc/profile.d/cf-ca-trust.sh \
+ && chmod 0644 /etc/profile.d/cf-ca-trust.sh
+
 WORKDIR /workspace
 RUN mkdir -p /workspace
 
