@@ -42,6 +42,22 @@ RUN curl -fsSL "https://github.com/anthropics/anthropic-cli/releases/download/v$
     | tar -xz -C /usr/local/bin ant \
  && chmod +x /usr/local/bin/ant
 
+# ---------------------------------------------------------------------------
+# Trust the Cloudflare egress proxy CA for Node.js / npm.
+#
+# The sandbox runtime injects an ephemeral CA at
+# /etc/cloudflare/certs/cloudflare-containers-ca.crt and auto-trusts it
+# for curl, Python, and Git — but Node.js does not pick it up automatically.
+# Sandbox exec() runs commands in non-login shells, so profile.d scripts
+# never execute. Without this, npm install crashes with "Exit handler never
+# called!" when the egress proxy intercepts HTTPS registry requests and
+# Node can't verify the certificate.
+#
+# ENV is baked into the image and applies to every process regardless of
+# shell type — login, non-login, or direct exec().
+# ---------------------------------------------------------------------------
+ENV NODE_EXTRA_CA_CERTS=/etc/cloudflare/certs/cloudflare-containers-ca.crt
+
 WORKDIR /workspace
 RUN mkdir -p /workspace
 
