@@ -47,6 +47,26 @@ function bearerClient(env: Env, token: string, what: string): Anthropic {
   });
 }
 
+// Org-scoped endpoints (e.g. `beta.sessions.retrieve`) authenticate with the
+// organization API key (`sk-ant-api...`) via the `x-api-key` header, NOT a
+// Bearer token. Passing the org key to `bearerClient()` sends it as
+// `Authorization: Bearer <key>`, which the per-session endpoints reject with
+// 401. That 401 is swallowed by `resolveBackend`'s try/catch and silently
+// forces every session onto the `microvm` fallback with `agent=(unknown)` —
+// leaving Isolate routing and per-session egress policies dark. `authToken:
+// null` keeps the SDK from also emitting an `Authorization` header alongside
+// `x-api-key` (the server rejects the combined credentials).
+function apiKeyClient(env: Env, token: string, what: string): Anthropic {
+  if (!token) {
+    throw new Error(`missing api key for ${what}`);
+  }
+  return new Anthropic({
+    apiKey: token,
+    authToken: null,
+    baseURL: resolveAnthropicBaseURL(env),
+  });
+}
+
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
@@ -163,7 +183,7 @@ export async function resolveBackend(
     return { backend, agentId: cached.agentId };
   }
   try {
-    const client = bearerClient(
+    const client = apiKeyClient(
       env,
       env.ANTHROPIC_API_KEY,
       "ANTHROPIC_API_KEY",
