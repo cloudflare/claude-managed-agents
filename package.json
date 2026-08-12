@@ -73,7 +73,7 @@
     "@phosphor-icons/react": "^2.1.10",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
-    "agents": "^0.12.4",
+    "agents": "^0.20.1",
     "ai": "^6.0.174",
     "hono": "^4.12.9",
     "marked": "^14.1.4",
